@@ -1,0 +1,55 @@
+venv/
+__pycache__/
+*.pyc
+data/raw/*.csv
+data/processed/*.csv
+*.ipynb_checkpoints/
+.vscode/
+
+
+# Jupyter
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+
+# PyCharm
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+
+# Logs
+*.log
+
+# Python packaging
+build/
+dist/
+*.egg-info/
+
+# Test and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Model files
+*.pkl
+*.joblib
+*.h5
+models/
+
+# Data files (optional)
+# Uncomment if datasets are large and should not be committed
+# data/raw/
+# data/processed/
+
+# Generated outputs
+outputs/
+reports/figures/
+
+# SHAP outputs
+shap_plots/
