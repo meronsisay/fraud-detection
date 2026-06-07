@@ -5,6 +5,7 @@ EDA functions for fraud detection datasets
 import pandas as pd
 import matplotlib.pyplot as plt
 
+
 class EDAUtils:
     """EDA tools for any fraud dataset"""
 
@@ -35,44 +36,47 @@ class EDAUtils:
         return counts, percentages
 
     def plot_class_distribution(self):
-            """Plot class distribution with explicit data labels"""
-            if self.target is None:
-                return
+        """Plot class distribution with explicit data labels"""
+        if self.target is None:
+            return
 
-            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
 
-            # 1. Fetch exact value counts
-            counts = self.df[self.target].value_counts()
-            
-            # 2. Bar plot with explicit label injections
-            counts.plot(
-                kind="bar", ax=ax1, color=["green", "red"]
-            )
-            ax1.set_title(f"{self.name} - Class Distribution", fontsize=12, fontweight='bold')
-            ax1.set_xlabel("Class", fontsize=10)
-            ax1.set_ylabel("Count", fontsize=10)
-            ax1.set_xticklabels(["Legit", "Fraud"], rotation=0)
-            
-            # Automatically inject numeric count text on top of each bar
-            for container in ax1.containers:
-                ax1.bar_label(container, fmt='{:,}', padding=3, fontweight='bold')
+        # 1. Fetch exact value counts
+        counts = self.df[self.target].value_counts()
 
-            # 3. Pie chart with clean percentage mapping
-            counts.plot(
-                kind="pie",
-                ax=ax2,
-                autopct="%1.2f%%",
-                labels=["Legit", "Fraud"], # Explicitly label pieces
-                colors=["green", "red"],
-                explode=[0, 0.15], # Increase explode slightly so tiny fraud slices stand out
-                startangle=90,      # Better structural alignment
-                textprops={'weight': 'bold'} # Makes percentage texts easier to read
-            )
-            ax2.set_title("Class Proportion", fontsize=12, fontweight='bold')
-            ax2.set_ylabel("")
+        # 2. Bar plot with explicit label injections
+        counts.plot(kind="bar", ax=ax1, color=["green", "red"])
+        ax1.set_title(
+            f"{self.name} - Class Distribution", fontsize=12, fontweight="bold"
+        )
+        ax1.set_xlabel("Class", fontsize=10)
+        ax1.set_ylabel("Count", fontsize=10)
+        ax1.set_xticklabels(["Legit", "Fraud"], rotation=0)
 
-            plt.tight_layout()
-            plt.show()
+        # Automatically inject numeric count text on top of each bar
+        for container in ax1.containers:
+            ax1.bar_label(container, fmt="{:,}", padding=3, fontweight="bold")
+
+        # 3. Pie chart with clean percentage mapping
+        counts.plot(
+            kind="pie",
+            ax=ax2,
+            autopct="%1.2f%%",
+            labels=["Legit", "Fraud"],  # Explicitly label pieces
+            colors=["green", "red"],
+            explode=[
+                0,
+                0.15,
+            ],  # Increase explode slightly so tiny fraud slices stand out
+            startangle=90,  # Better structural alignment
+            textprops={"weight": "bold"},  # Makes percentage texts easier to read
+        )
+        ax2.set_title("Class Proportion", fontsize=12, fontweight="bold")
+        ax2.set_ylabel("")
+
+        plt.tight_layout()
+        plt.show()
 
     def numerical_summary(self, numerical_cols):
         """Summary statistics using describe()"""
