@@ -6,3 +6,9 @@ shap
 ipykernel
 matplotlib
 seaborn
+imbalanced-learn
+pytest
+black
+joblib
+
+
