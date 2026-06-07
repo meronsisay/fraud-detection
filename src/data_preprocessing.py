@@ -114,19 +114,101 @@ class DataPreprocessor:
         return self
     
     def remove_duplicates(self):
-        """Remove duplicate rows targeting business logic definitions."""
+        """
+        Remove duplicate rows targeting business logic definitions.
+        E-commerce requires unique user profiles; Banking requires unique transaction records.
+        """
         print("\n" + "="*60)
         print("REMOVING DUPLICATES")
         print("="*60)
         
         before = len(self.df)
+        
+        # Scenario A: E-commerce data (1 unique record expected per user identity)
         if 'user_id' in self.df.columns:
             self.df = self.df.drop_duplicates(subset=['user_id'], keep='first')
+            justification = "Dropped duplicate user profiles (user_id should be strictly unique)."
+            
+        # Scenario B: Credit card/ledger data (Look for identical transactional footprints)
         else:
             self.df = self.df.drop_duplicates(keep='first')
+            justification = "Dropped identical transaction rows (likely API retry errors)."
             
         removed = before - len(self.df)
-        print(f"Removed {removed} duplicate records. Current row count: {len(self.df):,}")
+        print(f"  Result: {justification}")
+        print(f"  Removed {removed} duplicate records. Current row count: {len(self.df):,}")
+        return self
+    
+    def convert_ip_to_int(self):
+        """Converts IPv4 string/float addresses to integer format for rapid interval lookup."""
+        if 'ip_address' not in self.df.columns:
+            return self
+            
+        print("\n" + "="*60)
+        print("CONVERTING IP ADDRESSES TO INTEGERS")
+        print("="*60)
+        
+        # Cast float/scientific notations safely to uniform integer string approximations if needed,
+        # or straight to integer values depending on raw data formatting.
+        self.df['ip_address_int'] = self.df['ip_address'].astype(float).astype(int)
+        print("  Successfully transformed 'ip_address' → 'ip_address_int'")
+        return self
+
+    def merge_geolocation(self, ip_map_path="../data/raw/IpAddress_to_Country.csv"):
+        """Performs optimized interval matching using pandas merge_asof."""
+        print("\n" + "="*60)
+        print("GEOLOCATION INTEGRATION VIA RANGE LOOKUP")
+        print("="*60)
+        
+        # Load and clean map boundaries inline
+        ip_map = pd.read_csv(ip_map_path).dropna().drop_duplicates()
+        ip_map['lower_bound_ip_address'] = ip_map['lower_bound_ip_address'].astype(float).astype(int)
+        ip_map['upper_bound_ip_address'] = ip_map['upper_bound_ip_address'].astype(float).astype(int)
+        
+        # Sort keys is a strict algorithmic prerequisite for merge_asof
+        self.df = self.df.sort_values('ip_address_int')
+        ip_map = ip_map.sort_values('lower_bound_ip_address')
+        
+        # Backward match on lower bound
+        merged = pd.merge_asof(
+            self.df,
+            ip_map,
+            left_on='ip_address_int',
+            right_on='lower_bound_ip_address',
+            direction='backward'
+        )
+        
+        # Strict logic validation: clean matches leaking past upper bound bounds
+        merged['country'] = merged.apply(
+            lambda row: row['country'] if row['ip_address_int'] <= row['upper_bound_ip_address'] else 'Unknown',
+            axis=1
+        )
+        
+        # Drop the intermediate boundary range mapping columns to keep dataframe memory footprint lean
+        self.df = merged.drop(columns=['lower_bound_ip_address', 'upper_bound_ip_address'])
+        print(f"  Merged country data. Identified {self.df['country'].nunique()} unique nations.")
+        return self
+
+    def engineer_features(self):
+        """Extracts deep temporal patterns and user behavioral velocity metrics."""
+        print("\n" + "="*60)
+        print("ENGINEERING TEMPORAL AND BEHAVIORAL FEATURES")
+        print("="*60)
+        
+        if 'purchase_time' in self.df.columns and 'signup_time' in self.df.columns:
+            # 1. Delta Time Feature
+            self.df['time_since_signup'] = (self.df['purchase_time'] - self.df['signup_time']).dt.total_seconds() / 3600.0
+            
+            # 2. Cyclic Temporal Extraction
+            self.df['hour_of_day'] = self.df['purchase_time'].dt.hour
+            self.df['day_of_week'] = self.df['purchase_time'].dt.dayofweek
+            print("  Created: 'time_since_signup' (hours), 'hour_of_day', 'day_of_week'")
+            
+        if 'device_id' in self.df.columns:
+            # 3. Behavioral Velocity Feature (Tracks multi-account device exploitation attempts)
+            self.df['device_tx_velocity'] = self.df.groupby('device_id')['device_id'].transform('count')
+            print("  Created: 'device_tx_velocity' (Frequency metric mapping device recurrence patterns)")
+            
         return self
     
     def save(self, output_path):
