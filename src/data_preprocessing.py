@@ -261,6 +261,20 @@ class DataPreprocessor:
             )
 
         return self
+    
+    def engineer_advanced_features(self):
+            """Leak-free features based directly on EDA findings."""
+            # 1. Early transaction risk (Flags the 3.3x higher risk window discovered in EDA)
+            if 'time_since_signup' in self.df.columns:
+                # Your engineer_features computes this in hours, so <= 4 is perfect!
+                self.df['is_first_4hours'] = (self.df['time_since_signup'] <= 4).astype(int)
+            
+            # 2. High-risk countries (Clusters the ~26% extreme fraud rate regions safely)
+            if 'country' in self.df.columns:
+                high_risk_nations = {'Ecuador', 'Tunisia', 'Peru'}
+                self.df['is_high_risk_country'] = self.df['country'].isin(high_risk_nations).astype(int)
+                
+            return self
 
     def save(self, output_path):
         """Save cleaned data to processed folder destination."""
