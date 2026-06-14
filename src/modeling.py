@@ -3,7 +3,6 @@ Modular data preparation and model experimentation
 """
 
 import os
-import json
 import joblib
 import numpy as np
 import pandas as pd
@@ -11,7 +10,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from collections import Counter
 
-from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
+from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
@@ -332,7 +331,10 @@ def tune_model(X_train, y_train, X_val, y_val, model_type="xgboost", threshold=0
                 y_pred = (y_proba >= threshold).astype(int)
                 f1 = f1_score(y_val, y_pred)
                 if f1 > best_f1:
-                    best_f1, best_params = f1, {"max_depth": depth, "learning_rate": lr}
+                    best_f1, best_params = f1, {
+                        "max_depth": depth,
+                        "learning_rate": lr,
+                    }
 
     elif model_type == "random_forest":
         for depth in [5, 10, 15]:
@@ -346,10 +348,14 @@ def tune_model(X_train, y_train, X_val, y_val, model_type="xgboost", threshold=0
                 y_pred = (y_proba >= threshold).astype(int)
                 f1 = f1_score(y_val, y_pred)
                 if f1 > best_f1:
-                    best_f1, best_params = f1, {"max_depth": depth, "n_estimators": est}
+                    best_f1, best_params = f1, {
+                        "max_depth": depth,
+                        "n_estimators": est,
+                    }
 
     print(
-        f"Best {model_type.upper()} params at threshold {threshold}: {best_params} (Validation F1: {best_f1:.4f})"
+        f"Best {model_type.upper()} params at threshold {threshold}: {best_params} "
+        f"(Validation F1: {best_f1:.4f})"
     )
     return best_params
 
@@ -358,13 +364,15 @@ def compare_models(results_list):
     """Print side-by-side model comparison"""
     print("\n" + "=" * 90)
     print(
-        f"{'Model':<15} {'Strategy':<12} {'F1':<8} {'Precision':<10} {'Recall':<8} {'AUPRC':<8}"
+        f"{'Model':<15} {'Strategy':<12} {'F1':<8} {'Precision':<10} "
+        f"{'Recall':<8} {'AUPRC':<8}"
     )
     print("-" * 90)
     for r in results_list:
         name = r.get("model_type", "XGBoost").upper()
         print(
-            f"{name:<15} {r['strategy']:<12} {r['f1_score']:<8.4f} {r['precision']:<10.4f} {r['recall']:<8.4f} {r['auprc']:<8.4f}"
+            f"{name:<15} {r['strategy']:<12} {r['f1_score']:<8.4f} "
+            f"{r['precision']:<10.4f} {r['recall']:<8.4f} {r['auprc']:<8.4f}"
         )
     print("=" * 90)
 
@@ -377,7 +385,8 @@ def cross_validate_best_config(df, target_col, results_list, cv=5, threshold=0.3
     model_type = best["trainer"].model_type
 
     print(
-        f"Rigorous Cross-Validating: Model={model_type.upper()} | Strategy={strategy.upper()} | Ratio={target_ratio} | Threshold={threshold}"
+        f"Rigorous Cross-Validating: Model={model_type.upper()} | "
+        f"Strategy={strategy.upper()} | Ratio={target_ratio} | Threshold={threshold}"
     )
 
     cols_to_drop = [
@@ -403,12 +412,10 @@ def cross_validate_best_config(df, target_col, results_list, cv=5, threshold=0.3
     y_train_series = pd.Series(y_train_raw).reset_index(drop=True)
 
     for train_idx, val_idx in skf.split(X_train_df, y_train_series):
-        X_tr_raw, X_val_raw = X_train_df.iloc[train_idx].reset_index(
-            drop=True
-        ), X_train_df.iloc[val_idx].reset_index(drop=True)
-        y_tr_fold, y_val_fold = y_train_series.iloc[train_idx].reset_index(
-            drop=True
-        ), y_train_series.iloc[val_idx].reset_index(drop=True)
+        X_tr_raw = X_train_df.iloc[train_idx].reset_index(drop=True)
+        X_val_raw = X_train_df.iloc[val_idx].reset_index(drop=True)
+        y_tr_fold = y_train_series.iloc[train_idx].reset_index(drop=True)
+        y_val_fold = y_train_series.iloc[val_idx].reset_index(drop=True)
 
         fold_preparer = ModelingPreparer(target_col=target_col)
         cat_cols = X_tr_raw.select_dtypes(
@@ -576,7 +583,8 @@ def plot_ratio_impact(results_list, dataset_name, strategy="smote", save_path=No
 
     if len(df_plot) < 2:
         print(
-            f"Not enough variation in ratio data to plot trends for {dataset_name} - {strategy}"
+            f"Not enough variation in ratio data to plot trends for "
+            f"{dataset_name} - {strategy}"
         )
         return
 
@@ -661,7 +669,8 @@ def plot_confusion_matrix_heatmap(result, dataset_name, save_path=None):
     ax.text(
         0.5,
         -0.18,
-        f'F1: {result["f1_score"]:.4f} | Precision: {result["precision"]:.4f} | Recall: {result["recall"]:.4f}',
+        f'F1: {result["f1_score"]:.4f} | Precision: {result["precision"]:.4f} | '
+        f'Recall: {result["recall"]:.4f}',
         transform=ax.transAxes,
         ha="center",
         fontsize=9,
@@ -728,7 +737,11 @@ def plot_precision_recall_curve(result, X_test, y_test, dataset_name, save_path=
 
     plt.figure(figsize=(7, 5.5))
     plt.plot(
-        recall, precision, linewidth=2, color="darkblue", label=f"AUPRC = {auprc:.4f}"
+        recall,
+        precision,
+        linewidth=2,
+        color="darkblue",
+        label=f"AUPRC = {auprc:.4f}",
     )
     plt.fill_between(recall, precision, alpha=0.15, color="darkblue")
     plt.xlabel("Recall (Fraud Detection Rate)")
@@ -756,7 +769,11 @@ def plot_roc_curve(result, X_test, y_test, dataset_name, save_path=None):
 
     fig, ax = plt.subplots(figsize=(7, 6))
     ax.plot(
-        fpr, tpr, linewidth=2.5, color="#1f77b4", label=f"Model (AUC = {roc_auc:.4f})"
+        fpr,
+        tpr,
+        linewidth=2.5,
+        color="#1f77b4",
+        label=f"Model (AUC = {roc_auc:.4f})",
     )
     ax.fill_between(fpr, tpr, alpha=0.10, color="#1f77b4")
     ax.plot(
@@ -773,11 +790,16 @@ def plot_roc_curve(result, X_test, y_test, dataset_name, save_path=None):
         tpr[optimal_idx],
         "ro",
         markersize=9,
-        label=f"Optimal Geometric Split\nThreshold: {optimal_threshold:.3f}\nFPR: {fpr[optimal_idx]:.3f} | TPR: {tpr[optimal_idx]:.3f}",
+        label=f"Optimal Geometric Split\n"
+        f"Threshold: {optimal_threshold:.3f}\n"
+        f"FPR: {fpr[optimal_idx]:.3f} | TPR: {tpr[optimal_idx]:.3f}",
     )
 
     ax.set_xlabel(
-        "False Positive Rate (False Alarms)", fontsize=11, fontweight="bold", labelpad=8
+        "False Positive Rate (False Alarms)",
+        fontsize=11,
+        fontweight="bold",
+        labelpad=8,
     )
     ax.set_ylabel(
         "True Positive Rate (Recall / Detection)",
@@ -795,12 +817,17 @@ def plot_roc_curve(result, X_test, y_test, dataset_name, save_path=None):
     ax.text(
         0.35,
         0.35,
-        "Curves closer to the top-left\ncorner represent stronger\npredictive stability.",
+        "Curves closer to the top-left\n"
+        "corner represent stronger\n"
+        "predictive stability.",
         transform=ax.transAxes,
         fontsize=9,
         style="italic",
         bbox=dict(
-            boxstyle="round,pad=0.4", facecolor="#fff9db", edgecolor="none", alpha=0.9
+            boxstyle="round,pad=0.4",
+            facecolor="#fff9db",
+            edgecolor="none",
+            alpha=0.9,
         ),
     )
 
