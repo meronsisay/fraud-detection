@@ -2,7 +2,6 @@ import os
 import joblib
 import numpy as np
 import pandas as pd
-import seaborn as sns
 import matplotlib.pyplot as plt
 from collections import Counter
 
@@ -74,8 +73,12 @@ class ModelingPreparer:
             encoded_test = self.encoder.transform(X_test[cat_cols])
             encoded_cols = self.encoder.get_feature_names_out(cat_cols)
 
-            df_encoded_train = pd.DataFrame(encoded_train, columns=encoded_cols, index=X_train.index)
-            df_encoded_test = pd.DataFrame(encoded_test, columns=encoded_cols, index=X_test.index)
+            df_encoded_train = pd.DataFrame(
+                encoded_train, columns=encoded_cols, index=X_train.index
+            )
+            df_encoded_test = pd.DataFrame(
+                encoded_test, columns=encoded_cols, index=X_test.index
+            )
 
             X_train = X_train.drop(columns=cat_cols).join(df_encoded_train)
             X_test = X_test.drop(columns=cat_cols).join(df_encoded_test)
@@ -103,7 +106,9 @@ class ModelingPreparer:
         elif strategy == "smote":
             sampler = SMOTE(sampling_strategy=strat_param, random_state=42)
         else:
-            raise ValueError("Strategy must be 'none', 'undersample', 'oversample', or 'smote'")
+            raise ValueError(
+                "Strategy must be 'none', 'undersample', 'oversample', or 'smote'"
+            )
 
         X_res, y_res = sampler.fit_resample(X_train, y_train)
         self.after_counts = Counter(y_res)
@@ -156,7 +161,13 @@ class ModelingPreparer:
 class FraudModelTrainer:
     """Train and evaluate fraud detection models"""
 
-    def __init__(self, model_type="xgboost", random_state=42, scale_pos_weight=1, model_params=None):
+    def __init__(
+        self,
+        model_type="xgboost",
+        random_state=42,
+        scale_pos_weight=1,
+        model_params=None,
+    ):
         self.model_type = model_type
         self.random_state = random_state
         self.scale_pos_weight = scale_pos_weight
@@ -167,7 +178,11 @@ class FraudModelTrainer:
     def _initialize_model(self):
         """Initialize model based on type"""
         if self.model_type == "logistic":
-            params = {"class_weight": "balanced", "random_state": self.random_state, "max_iter": 1000}
+            params = {
+                "class_weight": "balanced",
+                "random_state": self.random_state,
+                "max_iter": 1000,
+            }
             params.update(self.model_params)
             return LogisticRegression(**params)
 
@@ -210,7 +225,6 @@ class FraudModelTrainer:
         prob = self.model.predict_proba(X)
         return prob[:, 1] if len(prob.shape) > 1 else prob
 
-
     def evaluate(self, X_test, y_test, threshold=0.30):
         """Evaluate model performance applying a custom probability threshold"""
         y_proba = self.predict_proba(X_test)
@@ -235,7 +249,15 @@ class FraudModelTrainer:
 # ============================================
 
 
-def run_experiment(df, target_col, strategy="smote", target_ratio=None, model_type="xgboost", threshold=0.30, model_params=None):
+def run_experiment(
+    df,
+    target_col,
+    strategy="smote",
+    target_ratio=None,
+    model_type="xgboost",
+    threshold=0.30,
+    model_params=None,
+):
     """Run a single experiment with specified resampling strategy and parameters"""
     preparer = ModelingPreparer(target_col=target_col)
     X_train, X_test, y_train, y_test = preparer.prepare_splits(df)
@@ -287,7 +309,13 @@ def cross_validate_best_config(df, target_col, results_list, cv=5, threshold=0.3
     model_type = best["model_type"]
 
     cols_to_drop = [
-        target_col, "user_id", "device_id", "ip_address", "signup_time", "purchase_time", "ip_address_int"
+        target_col,
+        "user_id",
+        "device_id",
+        "ip_address",
+        "signup_time",
+        "purchase_time",
+        "ip_address_int",
     ]
     X_raw = df.drop(columns=[col for col in cols_to_drop if col in df.columns])
     y_raw = df[target_col]
@@ -309,9 +337,11 @@ def cross_validate_best_config(df, target_col, results_list, cv=5, threshold=0.3
         y_val_fold = y_train_series.iloc[val_idx].reset_index(drop=True)
 
         fold_preparer = ModelingPreparer(target_col=target_col)
-        cat_cols = X_tr_raw.select_dtypes(include=["object", "category"]).columns.tolist()
+        cat_cols = X_tr_raw.select_dtypes(
+            include=["object", "category"]
+        ).columns.tolist()
         all_nums = X_tr_raw.select_dtypes(include=[np.number]).columns.tolist()
-        
+
         binary_flags = ["is_first_4hours", "is_high_risk_country"]
         num_cols = [col for col in all_nums if col not in binary_flags]
 
@@ -324,11 +354,17 @@ def cross_validate_best_config(df, target_col, results_list, cv=5, threshold=0.3
             encoded_val = fold_preparer.encoder.transform(X_val_raw[cat_cols])
             encoded_cols = fold_preparer.encoder.get_feature_names_out(cat_cols)
 
-            X_tr_fold = X_tr_fold.drop(columns=cat_cols).join(pd.DataFrame(encoded_tr, columns=encoded_cols, index=X_tr_fold.index))
-            X_val_fold = X_val_fold.drop(columns=cat_cols).join(pd.DataFrame(encoded_val, columns=encoded_cols, index=X_val_fold.index))
+            X_tr_fold = X_tr_fold.drop(columns=cat_cols).join(
+                pd.DataFrame(encoded_tr, columns=encoded_cols, index=X_tr_fold.index)
+            )
+            X_val_fold = X_val_fold.drop(columns=cat_cols).join(
+                pd.DataFrame(encoded_val, columns=encoded_cols, index=X_val_fold.index)
+            )
 
         if num_cols:
-            X_tr_fold[num_cols] = fold_preparer.scaler.fit_transform(X_tr_fold[num_cols])
+            X_tr_fold[num_cols] = fold_preparer.scaler.fit_transform(
+                X_tr_fold[num_cols]
+            )
             X_val_fold[num_cols] = fold_preparer.scaler.transform(X_val_fold[num_cols])
 
         X_tr_res, y_tr_res = fold_preparer.apply_resampling(
@@ -341,7 +377,9 @@ def cross_validate_best_config(df, target_col, results_list, cv=5, threshold=0.3
         else:
             fold_weight = 1
 
-        fold_trainer = FraudModelTrainer(model_type=model_type, scale_pos_weight=fold_weight)
+        fold_trainer = FraudModelTrainer(
+            model_type=model_type, scale_pos_weight=fold_weight
+        )
         fold_trainer.train(X_tr_res, y_tr_res)
 
         y_proba = fold_trainer.predict_proba(X_val_fold)
@@ -369,40 +407,77 @@ def cross_validate_best_config(df, target_col, results_list, cv=5, threshold=0.3
 
 def plot_strategy_comparison(results_list, dataset_name, save_path_prefix=None):
     """Two side-by-side bar charts - F1 Score and AUPRC"""
-    df_plot = pd.DataFrame([
-        {"strategy": r["strategy"], "f1_score": r["f1_score"], "auprc": r["auprc"]}
-        for r in results_list
-    ])
+    df_plot = pd.DataFrame(
+        [
+            {"strategy": r["strategy"], "f1_score": r["f1_score"], "auprc": r["auprc"]}
+            for r in results_list
+        ]
+    )
 
-    best_per_strategy = df_plot.loc[df_plot.groupby("strategy")["f1_score"].idxmax()].reset_index(drop=True)
+    best_per_strategy = df_plot.loc[
+        df_plot.groupby("strategy")["f1_score"].idxmax()
+    ].reset_index(drop=True)
     strategies = best_per_strategy["strategy"].tolist()
     f1_scores = best_per_strategy["f1_score"].tolist()
     auprc_scores = best_per_strategy["auprc"].tolist()
 
     colors = [
-        "#2ecc71" if s == "smote" else "#e74c3c" if s == "undersample" else "#3498db" if s == "oversample" else "#95a5a6"
+        (
+            "#2ecc71"
+            if s == "smote"
+            else (
+                "#e74c3c"
+                if s == "undersample"
+                else "#3498db" if s == "oversample" else "#95a5a6"
+            )
+        )
         for s in strategies
     ]
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
 
-    bars1 = ax1.bar(strategies, f1_scores, color=colors, edgecolor="black", linewidth=0.5)
+    bars1 = ax1.bar(
+        strategies, f1_scores, color=colors, edgecolor="black", linewidth=0.5
+    )
     ax1.set_ylabel("F1 Score")
     ax1.set_title("F1 Score by Strategy", fontsize=11, fontweight="bold")
     ax1.set_ylim(0, 1.1)
     ax1.grid(True, alpha=0.3, axis="y")
     for bar, val in zip(bars1, f1_scores):
-        ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01, f"{val:.4f}", ha="center", va="bottom", fontsize=9, fontweight="bold")
+        ax1.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 0.01,
+            f"{val:.4f}",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+            fontweight="bold",
+        )
 
-    bars2 = ax2.bar(strategies, auprc_scores, color=colors, edgecolor="black", linewidth=0.5)
+    bars2 = ax2.bar(
+        strategies, auprc_scores, color=colors, edgecolor="black", linewidth=0.5
+    )
     ax2.set_ylabel("AUPRC")
     ax2.set_title("AUPRC by Strategy", fontsize=11, fontweight="bold")
     ax2.set_ylim(0, 1.1)
     ax2.grid(True, alpha=0.3, axis="y")
     for bar, val in zip(bars2, auprc_scores):
-        ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01, f"{val:.4f}", ha="center", va="bottom", fontsize=9, fontweight="bold")
+        ax2.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 0.01,
+            f"{val:.4f}",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+            fontweight="bold",
+        )
 
-    fig.suptitle(f"{dataset_name}: Model Performance Comparison", fontsize=13, fontweight="bold", y=1.02)
+    fig.suptitle(
+        f"{dataset_name}: Model Performance Comparison",
+        fontsize=13,
+        fontweight="bold",
+        y=1.02,
+    )
     plt.tight_layout()
     if save_path_prefix:
         plt.savefig(f"{save_path_prefix}_comparison.png", dpi=150, bbox_inches="tight")
@@ -418,12 +493,14 @@ def plot_precision_recall_curve(result, X_test, y_test, dataset_name, save_path=
         y_proba = result["trainer_internal_model"].predict_proba(X_test)
         if len(y_proba.shape) > 1:
             y_proba = y_proba[:, 1]
-            
+
     precision, recall, _ = precision_recall_curve(y_test, y_proba)
     auprc = auc(recall, precision)
 
     plt.figure(figsize=(7, 5.5))
-    plt.plot(recall, precision, linewidth=2, color="darkblue", label=f"AUPRC = {auprc:.4f}")
+    plt.plot(
+        recall, precision, linewidth=2, color="darkblue", label=f"AUPRC = {auprc:.4f}"
+    )
     plt.fill_between(recall, precision, alpha=0.15, color="darkblue")
     plt.xlabel("Recall (Fraud Detection Rate)")
     plt.ylabel("Precision (Flag Accuracy)")
@@ -448,7 +525,7 @@ def plot_roc_curve(result, X_test, y_test, dataset_name, save_path=None):
         y_proba = result["trainer_internal_model"].predict_proba(X_test)
         if len(y_proba.shape) > 1:
             y_proba = y_proba[:, 1]
-        
+
     fpr, tpr, thresholds = roc_curve(y_test, y_proba)
     roc_auc = roc_auc_score(y_test, y_proba)
 
@@ -456,20 +533,54 @@ def plot_roc_curve(result, X_test, y_test, dataset_name, save_path=None):
     optimal_threshold = thresholds[optimal_idx]
 
     fig, ax = plt.subplots(figsize=(7, 6))
-    ax.plot(fpr, tpr, linewidth=2.5, color="#1f77b4", label=f"Model (AUC = {roc_auc:.4f})")
-    ax.fill_between(fpr, tpr, alpha=0.10, color="#1f77b4")
-    ax.plot([0, 1], [0, 1], color="#7f7f7f", linestyle="--", linewidth=1.2, label="Random Guess (AUC = 0.5000)")
-
     ax.plot(
-        fpr[optimal_idx], tpr[optimal_idx], "ro", markersize=9,
-        label=f"Optimal Split\nThreshold: {optimal_threshold:.3f}\nFPR: {fpr[optimal_idx]:.3f} | TPR: {tpr[optimal_idx]:.3f}"
+        fpr, tpr, linewidth=2.5, color="#1f77b4", label=f"Model (AUC = {roc_auc:.4f})"
+    )
+    ax.fill_between(fpr, tpr, alpha=0.10, color="#1f77b4")
+    ax.plot(
+        [0, 1],
+        [0, 1],
+        color="#7f7f7f",
+        linestyle="--",
+        linewidth=1.2,
+        label="Random Guess (AUC = 0.5000)",
     )
 
-    ax.set_xlabel("False Positive Rate (False Alarms)", fontsize=11, fontweight="bold", labelpad=8)
-    ax.set_ylabel("True Positive Rate (Recall / Detection)", fontsize=11, fontweight="bold", labelpad=8)
-    ax.set_title(f"{dataset_name}\nROC Performance Summary", fontsize=12, fontweight="bold", pad=14)
+    ax.plot(
+        fpr[optimal_idx],
+        tpr[optimal_idx],
+        "ro",
+        markersize=9,
+        label=(
+            f"Optimal Split\n"
+            f"Threshold: {optimal_threshold:.3f}\n"
+            f"FPR: {fpr[optimal_idx]:.3f} | TPR: {tpr[optimal_idx]:.3f}"
+        ),
+    )
 
-    ax.legend(loc="lower right", frameon=True, facecolor="white", edgecolor="none", fontsize=9.5)
+    ax.set_xlabel(
+        "False Positive Rate (False Alarms)", fontsize=11, fontweight="bold", labelpad=8
+    )
+    ax.set_ylabel(
+        "True Positive Rate (Recall / Detection)",
+        fontsize=11,
+        fontweight="bold",
+        labelpad=8,
+    )
+    ax.set_title(
+        f"{dataset_name}\nROC Performance Summary",
+        fontsize=12,
+        fontweight="bold",
+        pad=14,
+    )
+
+    ax.legend(
+        loc="lower right",
+        frameon=True,
+        facecolor="white",
+        edgecolor="none",
+        fontsize=9.5,
+    )
     ax.grid(True, linestyle=":", alpha=0.6)
     ax.set_xlim([-0.01, 1.01])
     ax.set_ylim([-0.01, 1.01])

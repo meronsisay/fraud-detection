@@ -27,7 +27,9 @@ class TestDataPreprocessor:
     def test_assess_quality(self):
         """Test quality assessment on sample data"""
         prep = DataPreprocessor()
-        prep.df = pd.DataFrame({"user_id": [1, 2, 3], "amount": [100, 200, 300], "class": [0, 1, 0]})
+        prep.df = pd.DataFrame(
+            {"user_id": [1, 2, 3], "amount": [100, 200, 300], "class": [0, 1, 0]}
+        )
 
         result = prep.assess_quality()
         assert result.quality_report["rows"] == 3
@@ -36,7 +38,9 @@ class TestDataPreprocessor:
     def test_remove_duplicates_with_user_id(self):
         """Test duplicate removal for e-commerce data"""
         prep = DataPreprocessor()
-        prep.df = pd.DataFrame({"user_id": [1, 1, 2, 3], "amount": [100, 100, 200, 300]})
+        prep.df = pd.DataFrame(
+            {"user_id": [1, 1, 2, 3], "amount": [100, 100, 200, 300]}
+        )
 
         prep.remove_duplicates()
         assert len(prep.df) == 3  # Duplicate user_id 1 removed
@@ -90,7 +94,9 @@ class TestDataPreprocessor:
     def test_handle_missing_with_ip(self):
         """Test dropping rows with missing IP addresses"""
         prep = DataPreprocessor()
-        prep.df = pd.DataFrame({"ip_address": ["1.1.1.1", None, "3.3.3.3"], "amount": [100, 200, 300]})
+        prep.df = pd.DataFrame(
+            {"ip_address": ["1.1.1.1", None, "3.3.3.3"], "amount": [100, 200, 300]}
+        )
 
         prep.handle_missing()
         assert len(prep.df) == 2  # Row with None dropped
@@ -99,7 +105,9 @@ class TestDataPreprocessor:
     def test_convert_ip_to_int(self):
         """Test IP address to integer conversion"""
         prep = DataPreprocessor()
-        prep.df = pd.DataFrame({"ip_address": ["192.168.1.1", "10.0.0.1", "52093.496895"]})
+        prep.df = pd.DataFrame(
+            {"ip_address": ["192.168.1.1", "10.0.0.1", "52093.496895"]}
+        )
 
         prep.convert_ip_to_int()
         assert "ip_address_int" in prep.df.columns
