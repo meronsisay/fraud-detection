@@ -12,26 +12,28 @@ The system aims to balance the competing costs of false positives (customer fric
 ```
 fraud-detection/
 ├── .github/
-│ └── workflows/
-│ └── ci.yml # CI/CD pipeline
+│   └── workflows/
+│       └── ci.yml                  # CI/CD pipeline
 ├── data/
-│ ├── raw/ # Original datasets (gitignored)
-│ └── processed/ # Cleaned feature-engineered data
+│   ├── raw/                        # Original datasets (gitignored)
+│   └── processed/                  # Cleaned feature-engineered data
 ├── notebooks/
-│ ├── eda-fraud-data.ipynb # E-commerce EDA
-│ ├── eda-creditcard.ipynb # Credit card EDA
-│ └── modeling.ipynb # Model training & evaluation
+│   ├── eda-fraud-data.ipynb        # E-commerce EDA
+│   ├── eda-creditcard.ipynb        # Credit card EDA
+│   ├── modeling.ipynb              # Model training & evaluation
+│   └── shap-explainability.ipynb   # SHAP model interpretation
 ├── src/
-│ ├── init.py
-│ ├── data_preprocessing.py # Data cleaning pipeline
-│ ├── eda_utils.py # EDA helper functions
-│ └── modeling.py # Model preparation and experimentation
+│   ├── __init__.py
+│   ├── data_preprocessing.py       # Data cleaning pipeline
+│   ├── eda_utils.py                # EDA helper functions
+│   ├── modeling.py                 # Model preparation and experimentation
+│   └── shap_utils.py               # SHAP analysis utilities
 ├── tests/
-│ ├── init.py
-│ └── test_data_preprocessing.py # Unit tests for preprocessing
-├── models/ # Saved model artifacts
-├── requirements.txt # Python dependencies
-└── README.md 
+│   ├── __init__.py
+│   └── test_data_preprocessing.py  # Unit tests for preprocessing
+├── models/                         # Saved model artifacts
+├── requirements.txt                # Python dependencies
+└── README.md  
 ```
 
 ## Key EDA Insights
@@ -156,6 +158,28 @@ fraud-detection/
 | Actual Legit | 56,597 | 279 |
 | Actual Fraud | 14 | 49 |
 
+## Model Explainability & Business Recommendations
+
+### E-commerce SHAP Insights
+
+| Priority | Feature | SHAP Insight | Recommended Action |
+|----------|---------|--------------|-------------------|
+| CRITICAL | `device_tx_velocity` | Strongest fraud driver; 3+ transactions in 10 min → 85% fraud probability | Block device or trigger MFA challenge immediately |
+| HIGH | `is_first_4hours` | 2nd strongest driver; fraudsters exploit immediate post-signup window | Enforce volume caps and 15-min cooldown for new accounts |
+| HIGH | `is_first_4hours` + `device_tx_velocity` | Compound risk pushes scores past 0.30 threshold | Hard-decline transactions combining both signals |
+
+### Credit Card SHAP Insights
+
+| Priority | Feature | SHAP Insight | Recommended Action |
+|----------|---------|--------------|-------------------|
+| CRITICAL | V14 (negative spikes) | Strongest driver (−0.293 correlation); extreme anomalies indicate account takeover | Hard-reject transactions with V14 < −3.0 |
+| HIGH | V12 (trend shifts) | 2nd most robust driver; progressive shifts signal credential stuffing | Deploy stream-processing to monitor V12 changes in real time |
+| HIGH | V4 × V17 (interaction) | Ambiguous risk profiles when V4 spikes and V17 dips | Trigger 3D Secure/biometric step-up authentication |
+
+---
+
+**Key Takeaway:** SHAP provides more balanced feature ranking than built-in importance. Prioritize behavioral signals (`device_tx_velocity`, `is_first_4hours`) over static attributes (country, day-of-week) in production rule systems.
+
 
 
 ## Environment Setup
@@ -184,3 +208,4 @@ pip install -r requirements.txt
 jupyter notebook notebooks/eda-fraud-data.ipynb
 jupyter notebook notebooks/eda-creditcard.ipynb
 jupyter notebook notebooks/modeling.ipynb
+jupyter notebook notebooks/shap-explainability.ipynb

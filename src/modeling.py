@@ -1,12 +1,7 @@
-"""
-Modular data preparation and model experimentation
-"""
-
 import os
 import joblib
 import numpy as np
 import pandas as pd
-import seaborn as sns
 import matplotlib.pyplot as plt
 from collections import Counter
 
@@ -66,6 +61,12 @@ class ModelingPreparer:
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, random_state=42, stratify=y
         )
+
+        # Reset indices to prevent mismatch joins
+        X_train = X_train.reset_index(drop=True)
+        X_test = X_test.reset_index(drop=True)
+        y_train = y_train.reset_index(drop=True)
+        y_test = y_test.reset_index(drop=True)
 
         if cat_cols:
             encoded_train = self.encoder.fit_transform(X_train[cat_cols])
@@ -175,7 +176,7 @@ class FraudModelTrainer:
         self.results = {}
 
     def _initialize_model(self):
-        """Initialize model based on type, feeding custom grid search params smoothly"""
+        """Initialize model based on type"""
         if self.model_type == "logistic":
             params = {
                 "class_weight": "balanced",
@@ -220,7 +221,9 @@ class FraudModelTrainer:
         return self.model.predict(X)
 
     def predict_proba(self, X):
-        return self.model.predict_proba(X)[:, 1]
+        # Always safe extraction of positive class probabilities
+        prob = self.model.predict_proba(X)
+        return prob[:, 1] if len(prob.shape) > 1 else prob
 
     def evaluate(self, X_test, y_test, threshold=0.30):
         """Evaluate model performance applying a custom probability threshold"""
@@ -239,15 +242,6 @@ class FraudModelTrainer:
             "confusion_matrix": confusion_matrix(y_test, y_pred),
         }
         return self.results
-
-    def save_model(self, path):
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        joblib.dump(self.model, path)
-        print(f"Model saved to {path}")
-
-    def load_model(self, path):
-        self.model = joblib.load(path)
-        return self
 
 
 # ============================================
@@ -268,15 +262,15 @@ def run_experiment(
     preparer = ModelingPreparer(target_col=target_col)
     X_train, X_test, y_train, y_test = preparer.prepare_splits(df)
 
-    if strategy == "none" and model_type == "xgboost":
-        counts = y_train.value_counts()
-        calculated_weight = counts.get(0, 1) / counts.get(1, 1)
-    else:
-        calculated_weight = 1
-
     X_train_res, y_train_res = preparer.apply_resampling(
         X_train, y_train, strategy=strategy, target_ratio=target_ratio
     )
+
+    if model_type == "xgboost":
+        counts = pd.Series(y_train_res).value_counts()
+        calculated_weight = counts.get(0, 1) / counts.get(1, 1)
+    else:
+        calculated_weight = 1
 
     trainer = FraudModelTrainer(
         model_type=model_type,
@@ -303,91 +297,16 @@ def run_experiment(
         "after_ratio": report["after"]["ratio"],
         "train_shape": X_train_res.shape,
         "test_shape": X_test.shape,
-        "trainer": trainer,
-        "preparer": preparer,
+        "trainer_internal_model": trainer.model,
     }
 
 
-def tune_model(X_train, y_train, X_val, y_val, model_type="xgboost", threshold=0.30):
-    """Grid search for models optimizing F1 performance strictly at your chosen custom threshold"""
-    best_f1 = 0
-    best_params = {}
-
-    if model_type == "xgboost":
-        for depth in [4, 6, 8]:
-            for lr in [0.05, 0.1, 0.2]:
-                model = XGBClassifier(
-                    max_depth=depth,
-                    learning_rate=lr,
-                    n_estimators=100,
-                    random_state=42,
-                    use_label_encoder=False,
-                    eval_metric="logloss",
-                    n_jobs=-1,
-                )
-                model.fit(X_train, y_train)
-                # FIX: Manual probability indexing to enforce the target operational threshold boundary
-                y_proba = model.predict_proba(X_val)[:, 1]
-                y_pred = (y_proba >= threshold).astype(int)
-                f1 = f1_score(y_val, y_pred)
-                if f1 > best_f1:
-                    best_f1, best_params = f1, {
-                        "max_depth": depth,
-                        "learning_rate": lr,
-                    }
-
-    elif model_type == "random_forest":
-        for depth in [5, 10, 15]:
-            for est in [50, 100, 200]:
-                model = RandomForestClassifier(
-                    max_depth=depth, n_estimators=est, random_state=42, n_jobs=-1
-                )
-                model.fit(X_train, y_train)
-                # FIX: Applied risk threshold override here as well
-                y_proba = model.predict_proba(X_val)[:, 1]
-                y_pred = (y_proba >= threshold).astype(int)
-                f1 = f1_score(y_val, y_pred)
-                if f1 > best_f1:
-                    best_f1, best_params = f1, {
-                        "max_depth": depth,
-                        "n_estimators": est,
-                    }
-
-    print(
-        f"Best {model_type.upper()} params at threshold {threshold}: {best_params} "
-        f"(Validation F1: {best_f1:.4f})"
-    )
-    return best_params
-
-
-def compare_models(results_list):
-    """Print side-by-side model comparison"""
-    print("\n" + "=" * 90)
-    print(
-        f"{'Model':<15} {'Strategy':<12} {'F1':<8} {'Precision':<10} "
-        f"{'Recall':<8} {'AUPRC':<8}"
-    )
-    print("-" * 90)
-    for r in results_list:
-        name = r.get("model_type", "XGBoost").upper()
-        print(
-            f"{name:<15} {r['strategy']:<12} {r['f1_score']:<8.4f} "
-            f"{r['precision']:<10.4f} {r['recall']:<8.4f} {r['auprc']:<8.4f}"
-        )
-    print("=" * 90)
-
-
 def cross_validate_best_config(df, target_col, results_list, cv=5, threshold=0.30):
-    """Cross-validates the best configuration securely protecting pipelines from out-of-fold data leakage."""
+    """Cross-validates the best configuration securely protecting pipelines from leakage."""
     best = max(results_list, key=lambda x: x["f1_score"])
     strategy = best["strategy"]
     target_ratio = best["target_ratio"]
-    model_type = best["trainer"].model_type
-
-    print(
-        f"Rigorous Cross-Validating: Model={model_type.upper()} | "
-        f"Strategy={strategy.upper()} | Ratio={target_ratio} | Threshold={threshold}"
-    )
+    model_type = best["model_type"]
 
     cols_to_drop = [
         target_col,
@@ -422,43 +341,41 @@ def cross_validate_best_config(df, target_col, results_list, cv=5, threshold=0.3
             include=["object", "category"]
         ).columns.tolist()
         all_nums = X_tr_raw.select_dtypes(include=[np.number]).columns.tolist()
-        num_cols = [
-            col
-            for col in all_nums
-            if col not in ["is_first_4hours", "is_high_risk_country"]
-        ]
 
-        X_tr_fold, X_val_fold = X_tr_raw.copy(), X_val_raw.copy()
+        binary_flags = ["is_first_4hours", "is_high_risk_country"]
+        num_cols = [col for col in all_nums if col not in binary_flags]
 
+        X_tr_fold = X_tr_raw.copy()
+        X_val_fold = X_val_raw.copy()
+
+        # FIXED: Pass historical index map explicitly to prevent NaN padding alignment breakages
         if cat_cols:
             encoded_tr = fold_preparer.encoder.fit_transform(X_tr_raw[cat_cols])
             encoded_val = fold_preparer.encoder.transform(X_val_raw[cat_cols])
             encoded_cols = fold_preparer.encoder.get_feature_names_out(cat_cols)
 
-            df_enc_tr = pd.DataFrame(
-                encoded_tr, columns=encoded_cols, index=X_tr_raw.index
+            X_tr_fold = X_tr_fold.drop(columns=cat_cols).join(
+                pd.DataFrame(encoded_tr, columns=encoded_cols, index=X_tr_fold.index)
             )
-            df_enc_val = pd.DataFrame(
-                encoded_val, columns=encoded_cols, index=X_val_raw.index
+            X_val_fold = X_val_fold.drop(columns=cat_cols).join(
+                pd.DataFrame(encoded_val, columns=encoded_cols, index=X_val_fold.index)
             )
-            X_tr_fold = X_tr_fold.drop(columns=cat_cols).join(df_enc_tr)
-            X_val_fold = X_val_fold.drop(columns=cat_cols).join(df_enc_val)
 
         if num_cols:
-            X_tr_fold[num_cols] = fold_preparer.scaler.fit_transform(X_tr_raw[num_cols])
-            X_val_fold[num_cols] = fold_preparer.scaler.transform(X_val_raw[num_cols])
-
-        if strategy == "none":
-            counts = y_tr_fold.value_counts()
-            fold_weight = (
-                counts.get(0, 1) / counts.get(1, 1) if model_type == "xgboost" else 1
+            X_tr_fold[num_cols] = fold_preparer.scaler.fit_transform(
+                X_tr_fold[num_cols]
             )
-            X_tr_res, y_tr_res = X_tr_fold, y_tr_fold
+            X_val_fold[num_cols] = fold_preparer.scaler.transform(X_val_fold[num_cols])
+
+        X_tr_res, y_tr_res = fold_preparer.apply_resampling(
+            X_tr_fold, y_tr_fold, strategy=strategy, target_ratio=target_ratio
+        )
+
+        if model_type == "xgboost":
+            counts = pd.Series(y_tr_res).value_counts()
+            fold_weight = counts.get(0, 1) / counts.get(1, 1)
         else:
             fold_weight = 1
-            X_tr_res, y_tr_res = fold_preparer.apply_resampling(
-                X_tr_fold, y_tr_fold, strategy=strategy, target_ratio=target_ratio
-            )
 
         fold_trainer = FraudModelTrainer(
             model_type=model_type, scale_pos_weight=fold_weight
@@ -497,7 +414,9 @@ def plot_strategy_comparison(results_list, dataset_name, save_path_prefix=None):
         ]
     )
 
-    best_per_strategy = df_plot.loc[df_plot.groupby("strategy")["f1_score"].idxmax()]
+    best_per_strategy = df_plot.loc[
+        df_plot.groupby("strategy")["f1_score"].idxmax()
+    ].reset_index(drop=True)
     strategies = best_per_strategy["strategy"].tolist()
     f1_scores = best_per_strategy["f1_score"].tolist()
     auprc_scores = best_per_strategy["auprc"].tolist()
@@ -565,183 +484,22 @@ def plot_strategy_comparison(results_list, dataset_name, save_path_prefix=None):
     plt.show()
 
 
-def plot_ratio_impact(results_list, dataset_name, strategy="smote", save_path=None):
-    """Show how different ratios affect performance for a specific strategy"""
-    df_plot = pd.DataFrame(
-        [
-            {
-                "target_ratio": r["target_ratio"],
-                "f1_score": r["f1_score"],
-                "precision": r["precision"],
-                "recall": r["recall"],
-                "auprc": r["auprc"],
-            }
-            for r in results_list
-            if r["strategy"] == strategy
-        ]
-    ).dropna(subset=["target_ratio"])
-
-    if len(df_plot) < 2:
-        print(
-            f"Not enough variation in ratio data to plot trends for "
-            f"{dataset_name} - {strategy}"
-        )
-        return
-
-    df_plot = df_plot.sort_values("target_ratio")
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-
-    axes[0].plot(
-        df_plot["target_ratio"],
-        df_plot["f1_score"],
-        marker="o",
-        linewidth=2,
-        markersize=8,
-        label="F1 Score",
-        color="#2ecc71",
-    )
-    axes[0].plot(
-        df_plot["target_ratio"],
-        df_plot["precision"],
-        marker="s",
-        linewidth=2,
-        markersize=8,
-        label="Precision",
-        color="#3498db",
-    )
-    axes[0].plot(
-        df_plot["target_ratio"],
-        df_plot["recall"],
-        marker="^",
-        linewidth=2,
-        markersize=8,
-        label="Recall",
-        color="#e74c3c",
-    )
-    axes[0].set_xlabel("Target Ratio")
-    axes[0].set_ylabel("Score")
-    axes[0].set_title(f"{dataset_name}: Core Metrics vs Ratio")
-    axes[0].legend()
-    axes[0].grid(True, alpha=0.3)
-
-    axes[1].plot(
-        df_plot["target_ratio"],
-        df_plot["auprc"],
-        marker="d",
-        linewidth=2,
-        markersize=8,
-        label="AUPRC",
-        color="#9b59b6",
-    )
-    axes[1].set_xlabel("Target Ratio")
-    axes[1].set_ylabel("Score")
-    axes[1].set_title(f"{dataset_name}: AUPRC vs Ratio")
-    axes[1].legend()
-    axes[1].grid(True, alpha=0.3)
-
-    plt.tight_layout()
-    if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches="tight")
-    plt.show()
-
-
-def plot_confusion_matrix_heatmap(result, dataset_name, save_path=None):
-    """Plot confusion matrix heatmap for a single result"""
-    cm = result["confusion_matrix"]
-    fig, ax = plt.subplots(figsize=(6, 5))
-    sns.heatmap(
-        cm,
-        annot=True,
-        fmt="d",
-        cmap="Blues",
-        ax=ax,
-        xticklabels=["Legitimate", "Fraud"],
-        yticklabels=["Legitimate", "Fraud"],
-    )
-
-    title = f'{dataset_name}: Confusion Matrix - {result["strategy"].upper()}'
-    if result.get("target_ratio"):
-        title += f' (ratio={result["target_ratio"]})'
-    ax.set_title(title, pad=15)
-    ax.set_xlabel("Predicted Label")
-    ax.set_ylabel("True Label")
-
-    ax.text(
-        0.5,
-        -0.18,
-        f'F1: {result["f1_score"]:.4f} | Precision: {result["precision"]:.4f} | '
-        f'Recall: {result["recall"]:.4f}',
-        transform=ax.transAxes,
-        ha="center",
-        fontsize=9,
-        fontweight="bold",
-    )
-
-    plt.tight_layout()
-    if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches="tight")
-    plt.show()
-
-
-def plot_all_confusion_matrices(results_list, dataset_name, save_path=None):
-    """Plot confusion matrices for all strategies side by side smoothly without structural index errors"""
-    strategies = {}
-    for r in results_list:
-        strat = r["strategy"]
-        if strat not in strategies or r["f1_score"] > strategies[strat]["f1_score"]:
-            strategies[strat] = r
-
-    n = len(strategies)
-    if n == 0:
-        return
-    cols = min(3, n)
-    rows = (n + cols - 1) // cols
-
-    fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 4.5 * rows))
-    axes = np.array([axes]).flatten()
-
-    for idx, (strategy, result) in enumerate(strategies.items()):
-        cm = result["confusion_matrix"]
-        title = f"{strategy.upper()}"
-        if result.get("target_ratio"):
-            title += f" (ratio={result['target_ratio']})"
-
-        sns.heatmap(
-            cm,
-            annot=True,
-            fmt="d",
-            cmap="Blues",
-            ax=axes[idx],
-            xticklabels=["Legit", "Fraud"],
-            yticklabels=["Legit", "Fraud"],
-        )
-        axes[idx].set_title(title, fontsize=11, fontweight="bold")
-        axes[idx].set_xlabel("Predicted")
-        axes[idx].set_ylabel("Actual")
-
-    for remaining_ax in axes[n:]:
-        remaining_ax.set_visible(False)
-
-    plt.suptitle(f"{dataset_name}: Confusion Matrix Comparison", fontsize=13, y=0.98)
-    plt.tight_layout()
-    if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches="tight")
-    plt.show()
-
-
 def plot_precision_recall_curve(result, X_test, y_test, dataset_name, save_path=None):
-    """Plot Precision-Recall curve dynamically extracting model probability boundaries"""
-    y_proba = result["trainer"].predict_proba(X_test)
+    """Plot Precision-Recall curve safely checking internal wrapper references"""
+    # FIXED: Standardized array check to prevent IndexError
+    if "trainer" in result:
+        y_proba = result["trainer"].predict_proba(X_test)
+    else:
+        y_proba = result["trainer_internal_model"].predict_proba(X_test)
+        if len(y_proba.shape) > 1:
+            y_proba = y_proba[:, 1]
+
     precision, recall, _ = precision_recall_curve(y_test, y_proba)
     auprc = auc(recall, precision)
 
     plt.figure(figsize=(7, 5.5))
     plt.plot(
-        recall,
-        precision,
-        linewidth=2,
-        color="darkblue",
-        label=f"AUPRC = {auprc:.4f}",
+        recall, precision, linewidth=2, color="darkblue", label=f"AUPRC = {auprc:.4f}"
     )
     plt.fill_between(recall, precision, alpha=0.15, color="darkblue")
     plt.xlabel("Recall (Fraud Detection Rate)")
@@ -759,21 +517,24 @@ def plot_precision_recall_curve(result, X_test, y_test, dataset_name, save_path=
 
 
 def plot_roc_curve(result, X_test, y_test, dataset_name, save_path=None):
-    """Plots a clean, single ROC curve with name fixed to match imports."""
-    y_proba = result["trainer"].predict_proba(X_test)
+    """Plots a clean, single ROC curve."""
+    # FIXED: Standardized array check to prevent IndexError
+    if "trainer" in result:
+        y_proba = result["trainer"].predict_proba(X_test)
+    else:
+        y_proba = result["trainer_internal_model"].predict_proba(X_test)
+        if len(y_proba.shape) > 1:
+            y_proba = y_proba[:, 1]
+
     fpr, tpr, thresholds = roc_curve(y_test, y_proba)
     roc_auc = roc_auc_score(y_test, y_proba)
 
-    optimal_idx = np.argmax(tpr - fpr)
+    optimal_idx = np.argmax(tpr[1:] - fpr[1:]) + 1
     optimal_threshold = thresholds[optimal_idx]
 
     fig, ax = plt.subplots(figsize=(7, 6))
     ax.plot(
-        fpr,
-        tpr,
-        linewidth=2.5,
-        color="#1f77b4",
-        label=f"Model (AUC = {roc_auc:.4f})",
+        fpr, tpr, linewidth=2.5, color="#1f77b4", label=f"Model (AUC = {roc_auc:.4f})"
     )
     ax.fill_between(fpr, tpr, alpha=0.10, color="#1f77b4")
     ax.plot(
@@ -790,16 +551,15 @@ def plot_roc_curve(result, X_test, y_test, dataset_name, save_path=None):
         tpr[optimal_idx],
         "ro",
         markersize=9,
-        label=f"Optimal Geometric Split\n"
-        f"Threshold: {optimal_threshold:.3f}\n"
-        f"FPR: {fpr[optimal_idx]:.3f} | TPR: {tpr[optimal_idx]:.3f}",
+        label=(
+            f"Optimal Split\n"
+            f"Threshold: {optimal_threshold:.3f}\n"
+            f"FPR: {fpr[optimal_idx]:.3f} | TPR: {tpr[optimal_idx]:.3f}"
+        ),
     )
 
     ax.set_xlabel(
-        "False Positive Rate (False Alarms)",
-        fontsize=11,
-        fontweight="bold",
-        labelpad=8,
+        "False Positive Rate (False Alarms)", fontsize=11, fontweight="bold", labelpad=8
     )
     ax.set_ylabel(
         "True Positive Rate (Recall / Detection)",
@@ -812,23 +572,6 @@ def plot_roc_curve(result, X_test, y_test, dataset_name, save_path=None):
         fontsize=12,
         fontweight="bold",
         pad=14,
-    )
-
-    ax.text(
-        0.35,
-        0.35,
-        "Curves closer to the top-left\n"
-        "corner represent stronger\n"
-        "predictive stability.",
-        transform=ax.transAxes,
-        fontsize=9,
-        style="italic",
-        bbox=dict(
-            boxstyle="round,pad=0.4",
-            facecolor="#fff9db",
-            edgecolor="none",
-            alpha=0.9,
-        ),
     )
 
     ax.legend(
